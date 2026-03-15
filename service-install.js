@@ -17,11 +17,34 @@ const svc = new Service({
   maxRestarts: 3,
 
   // Variables de entorno del servicio
+  // IMPORTANTE: El servicio corre como SYSTEM, que no tiene el PATH ni
+  // el perfil de usuario. Pasamos las variables críticas del usuario actual
+  // para que opencode sea encontrado y pueda leer auth.json.
   env: [
     { name: "NODE_ENV", value: "production" },
     {
       name: "DOTENV_CONFIG_PATH",
       value: path.join(__dirname, ".env"),
+    },
+    {
+      name: "PATH",
+      value: process.env.PATH,
+    },
+    {
+      name: "USERPROFILE",
+      value: process.env.USERPROFILE,
+    },
+    {
+      name: "HOME",
+      value: process.env.USERPROFILE,
+    },
+    {
+      name: "APPDATA",
+      value: process.env.APPDATA,
+    },
+    {
+      name: "LOCALAPPDATA",
+      value: process.env.LOCALAPPDATA,
     },
   ],
 });
