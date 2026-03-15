@@ -21,6 +21,10 @@ const OPENCODE_HOST = process.env.OPENCODE_HOST ?? "127.0.0.1";
 // Si DEFAULT_MODEL está vacío, se auto-detecta del servidor OpenCode al arrancar
 const DEFAULT_MODEL_ENV = process.env.DEFAULT_MODEL?.trim() ?? "";
 const API_SECRET = process.env.API_SECRET ?? undefined;
+const MONITOR_INTERVAL_MINUTES = parseInt(
+  process.env.MONITOR_INTERVAL_MINUTES ?? "60",
+  10
+);
 
 // Contraseña interna para la comunicación con opencode serve.
 // Se genera aleatoriamente en cada arranque para mayor seguridad.
@@ -97,6 +101,38 @@ async function main() {
     console.log(`    -d '{"messages":[{"role":"user","content":"Hola!"}]}'`);
     console.log("────────────────────────────────────────────");
   });
+
+  // 5. Monitoreo Proactivo de la Sesión
+  if (MONITOR_INTERVAL_MINUTES > 0) {
+    const intervalMs = MONITOR_INTERVAL_MINUTES * 60 * 1000;
+    console.log(
+      `  [Monitoreo] Verificando sesión activa cada ${MONITOR_INTERVAL_MINUTES} minutos.`
+    );
+
+    setInterval(async () => {
+      try {
+        // Hacemos una petición mínima para ver si lanza error de autenticación
+        await opencode.chat("ping (proactive check)", resolvedModel);
+        console.log(
+          `[${new Date().toISOString()}] [Monitoreo] Sesión OK.`
+        );
+      } catch (err: unknown) {
+        const error = err as Error;
+        // Solo nos interesa si expiró
+        if (notifier.isAuthError(error)) {
+          console.error(
+            `[${new Date().toISOString()}] [ALERTA] Sesión expirada detectada en background.`
+          );
+          notifier.sendCredentialExpiredAlert(error.message).catch(() => {});
+        } else {
+          // Si el error no es de autenticación (ej. timeout de red), lo ignoramos para no asustar
+          console.log(
+            `[${new Date().toISOString()}] [Monitoreo] Falló el chequeo, pero no es de autenticación: ${error.message}`
+          );
+        }
+      }
+    }, intervalMs);
+  }
 
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
