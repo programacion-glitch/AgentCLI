@@ -2,9 +2,13 @@
 // OpenAI-compatible request/response types
 // ============================================================
 
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: string } };
+
 export interface OpenAIMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | ContentPart[];
 }
 
 export interface ChatCompletionRequest {
@@ -70,3 +74,8 @@ export interface OpenCodeMessageResponse {
   };
   parts: OpenCodeMessagePart[];
 }
+
+// Input parts for OpenCode requests (OpenCodeMessagePart above is for responses)
+export type OpenCodeInputPart =
+  | { type: "text"; text: string }
+  | { type: "file"; mime: string; url: string };
