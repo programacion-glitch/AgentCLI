@@ -7,6 +7,8 @@ import {
   ChatCompletionRequest,
   ChatCompletionResponse,
   OpenAIMessage,
+  OpenCodeInputPart,
+  ContentPart,
 } from "./types";
 
 export function createServer(
@@ -129,10 +131,21 @@ export function createServer(
         (m: OpenAIMessage) => m.role !== "system"
       );
 
-      // Construir el prompt combinando todos los mensajes de conversación
-      const prompt = buildPrompt(conversationMessages);
+      // Extraer system prompt como string (soporta content string o array)
+      let systemPrompt: string | undefined;
+      if (systemMessage) {
+        systemPrompt = typeof systemMessage.content === "string"
+          ? systemMessage.content
+          : systemMessage.content
+              .filter((p): p is ContentPart & { type: "text" } => p.type === "text")
+              .map((p) => p.text)
+              .join("\n");
+      }
 
-      if (!prompt) {
+      // Construir partes de input (texto + imagenes)
+      const parts = buildParts(conversationMessages);
+
+      if (parts.length === 0) {
         res.status(400).json({
           error: {
             message: "No se encontró contenido en los mensajes",
@@ -148,9 +161,9 @@ export function createServer(
         );
 
         const { text, model } = await opencode.chat(
-          prompt,
+          parts,
           opencodeModel,
-          systemMessage?.content
+          systemPrompt
         );
 
         // Construir respuesta compatible con OpenAI
@@ -216,6 +229,22 @@ export function createServer(
     }
   );
 
+  // Error handler para payload demasiado grande (formato OpenAI)
+  app.use((err: Error & { type?: string }, _req: Request, res: Response, _next: NextFunction) => {
+    if (err.type === "entity.too.large") {
+      res.status(413).json({
+        error: {
+          message: "Request body too large (max 10MB)",
+          type: "invalid_request_error",
+        },
+      });
+      return;
+    }
+    res.status(500).json({
+      error: { message: "Internal server error", type: "server_error" },
+    });
+  });
+
   return app;
 }
 
@@ -256,24 +285,40 @@ function mapToOpencodeModel(requested: string, defaultModel: string): string {
 }
 
 /**
- * Construye un prompt unificado a partir de los mensajes de la conversación.
- * Si hay una sola mensaje de usuario, lo devuelve tal cual.
- * Si hay múltiples (conversación), los formatea con roles.
+ * Convierte mensajes OpenAI a partes de input para OpenCode.
+ * Soporta content como string (texto plano) o como array (texto + imagenes).
  */
-function buildPrompt(messages: OpenAIMessage[]): string {
-  if (messages.length === 0) return "";
+function buildParts(messages: OpenAIMessage[]): OpenCodeInputPart[] {
+  const parts: OpenCodeInputPart[] = [];
 
-  if (messages.length === 1 && messages[0].role === "user") {
-    return messages[0].content;
+  for (const msg of messages) {
+    const label = msg.role === "assistant" ? "Assistant" : "User";
+
+    if (typeof msg.content === "string") {
+      const text = messages.length === 1 && msg.role === "user"
+        ? msg.content
+        : `${label}: ${msg.content}`;
+      parts.push({ type: "text", text });
+    } else {
+      for (const part of msg.content) {
+        if (part.type === "text") {
+          const text = messages.length === 1 && msg.role === "user"
+            ? part.text
+            : `${label}: ${part.text}`;
+          parts.push({ type: "text", text });
+        } else if (part.type === "image_url") {
+          if (!part.image_url.url.startsWith("data:image/")) {
+            console.warn("[buildParts] Skipping remote image URL (only base64 data URLs supported)");
+            continue;
+          }
+          const mime = part.image_url.url.match(/^data:(image\/[\w.+-]+);/)?.[1] ?? "image/png";
+          parts.push({ type: "file", mime, url: part.image_url.url });
+        }
+      }
+    }
   }
 
-  // Conversación con múltiples turnos
-  return messages
-    .map((m) => {
-      const label = m.role === "assistant" ? "Assistant" : "User";
-      return `${label}: ${m.content}`;
-    })
-    .join("\n\n");
+  return parts;
 }
 
 /**
