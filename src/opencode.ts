@@ -3,6 +3,7 @@ import {
   OpenCodeSession,
   OpenCodeMessageResponse,
   OpenCodeMessagePart,
+  OpenCodeInputPart,
 } from "./types";
 
 export class OpenCodeClient {
@@ -69,33 +70,22 @@ export class OpenCodeClient {
    */
   async sendMessage(
     sessionId: string,
-    prompt: string,
+    parts: OpenCodeInputPart[],
     model: string,
     systemPrompt?: string
   ): Promise<OpenCodeMessageResponse> {
-    // Parseamos el modelo que viene en formato "providerID/modelID"
     const [providerID, modelID] = model.includes("/")
       ? model.split("/", 2)
       : ["openai", model];
 
     const body: Record<string, unknown> = {
-      parts: [
-        {
-          type: "text",
-          text: prompt,
-        },
-      ],
-      // OpenCode espera el modelo como objeto con providerID y modelID
+      parts,
       model: {
         providerID,
         modelID,
       },
+      ...(systemPrompt && { system: systemPrompt }),
     };
-
-    // Si hay un system prompt, lo pasamos directamente
-    if (systemPrompt) {
-      body.system = systemPrompt;
-    }
 
     const res = await this.http.post<OpenCodeMessageResponse>(
       `/session/${sessionId}/message`,
@@ -144,7 +134,7 @@ export class OpenCodeClient {
    * Operación completa: crea sesión → envía mensaje → devuelve texto → limpia sesión
    */
   async chat(
-    prompt: string,
+    parts: OpenCodeInputPart[],
     model: string,
     systemPrompt?: string
   ): Promise<{ text: string; model: string }> {
@@ -153,7 +143,7 @@ export class OpenCodeClient {
     try {
       const response = await this.sendMessage(
         session.id,
-        prompt,
+        parts,
         model,
         systemPrompt
       );
@@ -162,7 +152,6 @@ export class OpenCodeClient {
 
       return { text, model };
     } finally {
-      // Siempre limpiamos la sesión, aunque haya error
       await this.deleteSession(session.id);
     }
   }
