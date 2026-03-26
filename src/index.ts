@@ -112,7 +112,7 @@ async function main() {
     setInterval(async () => {
       try {
         // Hacemos una petición mínima para ver si lanza error de autenticación
-        await opencode.chat("ping (proactive check)", resolvedModel);
+        await opencode.chat([{ type: "text", text: "ping (proactive check)" }], resolvedModel);
         console.log(
           `[${new Date().toISOString()}] [Monitoreo] Sesión OK.`
         );
