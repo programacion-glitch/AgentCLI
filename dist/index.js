@@ -94,8 +94,15 @@ async function main() {
         console.log(`  [Monitoreo] Verificando sesión activa cada ${MONITOR_INTERVAL_MINUTES} minutos.`);
         setInterval(async () => {
             try {
-                // Hacemos una petición mínima para ver si lanza error de autenticación
-                await opencode.chat("ping (proactive check)", resolvedModel);
+                // Forzamos una respuesta concreta del modelo: si la sesión expiró,
+                // OpenCode puede devolver 200 con texto vacío en lugar de 401.
+                const { text } = await opencode.chat([{ type: "text", text: "Responde solo con la palabra OK" }], resolvedModel);
+                if (!text.trim()) {
+                    const msg = "Respuesta vacía del modelo (posible sesión expirada)";
+                    console.error(`[${new Date().toISOString()}] [ALERTA] ${msg}`);
+                    notifier.sendCredentialExpiredAlert(msg).catch(() => { });
+                    return;
+                }
                 console.log(`[${new Date().toISOString()}] [Monitoreo] Sesión OK.`);
             }
             catch (err) {

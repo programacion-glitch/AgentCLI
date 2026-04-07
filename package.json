@@ -19,6 +19,7 @@
     "express": "^4.18.2",
     "node-windows": "^1.0.0-beta.8",
     "nodemailer": "^8.0.2",
+    "openai": "^6.29.0",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

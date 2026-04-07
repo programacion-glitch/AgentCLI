@@ -9,8 +9,17 @@ const cors_1 = __importDefault(require("cors"));
 const uuid_1 = require("uuid");
 function createServer(opencode, defaultModel, notifier, apiSecret) {
     const app = (0, express_1.default)();
-    app.use(express_1.default.json({ limit: "10mb" }));
+    app.use(express_1.default.json({ limit: "50mb" }));
     app.use((0, cors_1.default)());
+    // Log del tamaño de cada request entrante (diagnóstico de payloads grandes)
+    app.use((req, _res, next) => {
+        const len = req.headers["content-length"];
+        if (len) {
+            const mb = (parseInt(len, 10) / 1024 / 1024).toFixed(2);
+            console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} → ${mb} MB`);
+        }
+        next();
+    });
     // ──────────────────────────────────────────────
     // Middleware: validación de token opcional
     // ──────────────────────────────────────────────
@@ -103,9 +112,19 @@ function createServer(opencode, defaultModel, notifier, apiSecret) {
         // Separar system prompt de los mensajes de usuario
         const systemMessage = body.messages.find((m) => m.role === "system");
         const conversationMessages = body.messages.filter((m) => m.role !== "system");
-        // Construir el prompt combinando todos los mensajes de conversación
-        const prompt = buildPrompt(conversationMessages);
-        if (!prompt) {
+        // Extraer system prompt como string (soporta content string o array)
+        let systemPrompt;
+        if (systemMessage) {
+            systemPrompt = typeof systemMessage.content === "string"
+                ? systemMessage.content
+                : systemMessage.content
+                    .filter((p) => p.type === "text")
+                    .map((p) => p.text)
+                    .join("\n");
+        }
+        // Construir partes de input (texto + imagenes)
+        const parts = buildParts(conversationMessages);
+        if (parts.length === 0) {
             res.status(400).json({
                 error: {
                     message: "No se encontró contenido en los mensajes",
@@ -116,7 +135,21 @@ function createServer(opencode, defaultModel, notifier, apiSecret) {
         }
         try {
             console.log(`[${new Date().toISOString()}] Chat request → model: ${opencodeModel}`);
-            const { text, model } = await opencode.chat(prompt, opencodeModel, systemMessage?.content);
+            const { text, model } = await opencode.chat(parts, opencodeModel, systemPrompt);
+            // Si OpenCode devuelve texto vacío, asumimos sesión expirada
+            // (no siempre lanza 401 cuando las credenciales caducan).
+            if (!text.trim()) {
+                const msg = "OpenCode devolvió respuesta vacía (probable sesión de ChatGPT Pro expirada)";
+                console.error(`[ALERTA] ${msg}`);
+                notifier.sendCredentialExpiredAlert(msg).catch(() => { });
+                res.status(503).json({
+                    error: {
+                        message: "Las credenciales de ChatGPT Pro parecen haber expirado (respuesta vacía). Se ha enviado una alerta por correo. Ejecuta 'opencode' → '/connect' para renovarlas.",
+                        type: "auth_expired",
+                    },
+                });
+                return;
+            }
             // Construir respuesta compatible con OpenAI
             const response = buildOpenAIResponse(text, model, requestedModel);
             console.log(`[${new Date().toISOString()}] Chat response → ${text.length} chars`);
@@ -157,6 +190,21 @@ function createServer(opencode, defaultModel, notifier, apiSecret) {
             });
         }
     });
+    // Error handler para payload demasiado grande (formato OpenAI)
+    app.use((err, _req, res, _next) => {
+        if (err.type === "entity.too.large") {
+            res.status(413).json({
+                error: {
+                    message: "Request body too large (max 50MB)",
+                    type: "invalid_request_error",
+                },
+            });
+            return;
+        }
+        res.status(500).json({
+            error: { message: "Internal server error", type: "server_error" },
+        });
+    });
     return app;
 }
 // ──────────────────────────────────────────────
@@ -192,23 +240,39 @@ function mapToOpencodeModel(requested, defaultModel) {
     return `openai/${requested}`;
 }
 /**
- * Construye un prompt unificado a partir de los mensajes de la conversación.
- * Si hay una sola mensaje de usuario, lo devuelve tal cual.
- * Si hay múltiples (conversación), los formatea con roles.
+ * Convierte mensajes OpenAI a partes de input para OpenCode.
+ * Soporta content como string (texto plano) o como array (texto + imagenes).
  */
-function buildPrompt(messages) {
-    if (messages.length === 0)
-        return "";
-    if (messages.length === 1 && messages[0].role === "user") {
-        return messages[0].content;
+function buildParts(messages) {
+    const parts = [];
+    for (const msg of messages) {
+        const label = msg.role === "assistant" ? "Assistant" : "User";
+        if (typeof msg.content === "string") {
+            const text = messages.length === 1 && msg.role === "user"
+                ? msg.content
+                : `${label}: ${msg.content}`;
+            parts.push({ type: "text", text });
+        }
+        else {
+            for (const part of msg.content) {
+                if (part.type === "text") {
+                    const text = messages.length === 1 && msg.role === "user"
+                        ? part.text
+                        : `${label}: ${part.text}`;
+                    parts.push({ type: "text", text });
+                }
+                else if (part.type === "image_url") {
+                    if (!part.image_url.url.startsWith("data:image/")) {
+                        console.warn("[buildParts] Skipping remote image URL (only base64 data URLs supported)");
+                        continue;
+                    }
+                    const mime = part.image_url.url.match(/^data:(image\/[\w.+-]+);/)?.[1] ?? "image/png";
+                    parts.push({ type: "file", mime, url: part.image_url.url });
+                }
+            }
+        }
     }
-    // Conversación con múltiples turnos
-    return messages
-        .map((m) => {
-        const label = m.role === "assistant" ? "Assistant" : "User";
-        return `${label}: ${m.content}`;
-    })
-        .join("\n\n");
+    return parts;
 }
 /**
  * Construye una respuesta en formato compatible con la API de OpenAI

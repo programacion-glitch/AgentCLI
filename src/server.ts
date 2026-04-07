@@ -19,8 +19,20 @@ export function createServer(
 ) {
   const app = express();
 
-  app.use(express.json({ limit: "10mb" }));
+  app.use(express.json({ limit: "50mb" }));
   app.use(cors());
+
+  // Log del tamaño de cada request entrante (diagnóstico de payloads grandes)
+  app.use((req: Request, _res: Response, next: NextFunction): void => {
+    const len = req.headers["content-length"];
+    if (len) {
+      const mb = (parseInt(len, 10) / 1024 / 1024).toFixed(2);
+      console.log(
+        `[${new Date().toISOString()}] ${req.method} ${req.path} → ${mb} MB`
+      );
+    }
+    next();
+  });
 
   // ──────────────────────────────────────────────
   // Middleware: validación de token opcional
@@ -166,6 +178,23 @@ export function createServer(
           systemPrompt
         );
 
+        // Si OpenCode devuelve texto vacío, asumimos sesión expirada
+        // (no siempre lanza 401 cuando las credenciales caducan).
+        if (!text.trim()) {
+          const msg =
+            "OpenCode devolvió respuesta vacía (probable sesión de ChatGPT Pro expirada)";
+          console.error(`[ALERTA] ${msg}`);
+          notifier.sendCredentialExpiredAlert(msg).catch(() => {});
+          res.status(503).json({
+            error: {
+              message:
+                "Las credenciales de ChatGPT Pro parecen haber expirado (respuesta vacía). Se ha enviado una alerta por correo. Ejecuta 'opencode' → '/connect' para renovarlas.",
+              type: "auth_expired",
+            },
+          });
+          return;
+        }
+
         // Construir respuesta compatible con OpenAI
         const response: ChatCompletionResponse = buildOpenAIResponse(
           text,
@@ -234,7 +263,7 @@ export function createServer(
     if (err.type === "entity.too.large") {
       res.status(413).json({
         error: {
-          message: "Request body too large (max 10MB)",
+          message: "Request body too large (max 50MB)",
           type: "invalid_request_error",
         },
       });

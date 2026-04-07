@@ -139,6 +139,135 @@ Authorization: Bearer <tu_token_secreto>
 | `temperature` | number | No | Se recibe pero no afecta el comportamiento (OpenCode lo gestiona) |
 | `max_tokens` | number | No | Se recibe pero no afecta el comportamiento |
 
+### Enviar imagenes (vision)
+
+El endpoint acepta imagenes en formato base64 usando el mismo formato que la API oficial de OpenAI. Para enviar una imagen, el campo `content` del mensaje se convierte en un array de partes:
+
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "¿Qué ves en esta imagen?" },
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg..."
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Campo | Descripcion |
+|---|---|
+| `content` | Puede ser `string` (solo texto) o un array de partes (texto + imagenes) |
+| `type: "text"` | Parte de texto del mensaje |
+| `type: "image_url"` | Parte de imagen. El campo `url` debe ser un data URL base64 |
+
+**Restricciones:**
+
+- **Solo base64 data URLs.** URLs remotas (`https://...`) son ignoradas. La imagen debe estar codificada inline como `data:image/<formato>;base64,...`
+- **Formatos soportados:** PNG, JPEG, GIF, WebP
+- **Limite de tamaño:** 10 MB total del body (incluyendo la imagen codificada en base64)
+- El campo `detail` de `image_url` se acepta pero se ignora
+
+**Ejemplo con curl:**
+
+```bash
+# Codificar una imagen a base64 y enviarla
+BASE64_IMG=$(base64 -w 0 mi_imagen.png)
+
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"messages\": [
+      {
+        \"role\": \"user\",
+        \"content\": [
+          { \"type\": \"text\", \"text\": \"Describe esta imagen en español\" },
+          {
+            \"type\": \"image_url\",
+            \"image_url\": {
+              \"url\": \"data:image/png;base64,${BASE64_IMG}\"
+            }
+          }
+        ]
+      }
+    ]
+  }"
+```
+
+**Ejemplo con el SDK de OpenAI (Node.js):**
+
+```javascript
+import OpenAI from "openai";
+import fs from "fs";
+
+const openai = new OpenAI({
+  apiKey: "no-se-usa",
+  baseURL: "http://localhost:3000/v1"
+});
+
+// Leer imagen y convertir a base64
+const imageBuffer = fs.readFileSync("mi_imagen.png");
+const base64Image = imageBuffer.toString("base64");
+const dataUrl = `data:image/png;base64,${base64Image}`;
+
+const response = await openai.chat.completions.create({
+  model: "gpt-4o",
+  messages: [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "¿Qué ves en esta imagen?" },
+        { type: "image_url", image_url: { url: dataUrl } }
+      ]
+    }
+  ]
+});
+
+console.log(response.choices[0].message.content);
+```
+
+**Ejemplo con el SDK de OpenAI (Python):**
+
+```python
+from openai import OpenAI
+import base64
+
+client = OpenAI(
+    api_key="no-se-usa",
+    base_url="http://localhost:3000/v1"
+)
+
+# Leer imagen y convertir a base64
+with open("mi_imagen.png", "rb") as f:
+    base64_image = base64.b64encode(f.read()).decode("utf-8")
+
+data_url = f"data:image/png;base64,{base64_image}"
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "¿Qué ves en esta imagen?"},
+                {"type": "image_url", "image_url": {"url": data_url}}
+            ]
+        }
+    ]
+)
+
+print(response.choices[0].message.content)
+```
+
+> **Nota:** Puedes combinar texto e imagenes libremente. Tambien puedes enviar mensajes con solo texto (string) y otros con imagenes (array) en la misma conversacion. La retrocompatibilidad con `content: "texto"` se mantiene.
+
 ### Roles de mensajes
 
 | Rol | Descripción |
@@ -320,7 +449,49 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 
 ---
 
-### 7. Con token de autenticación (si configuraste API_SECRET)
+### 7. Analizar una imagen
+
+Enviar una imagen para que el modelo la describa o extraiga informacion:
+
+```bash
+# Codificar imagen a base64
+BASE64_IMG=$(base64 -w 0 factura.jpg)
+
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"messages\": [
+      {
+        \"role\": \"system\",
+        \"content\": \"Extraes datos de facturas. Responde UNICAMENTE con JSON valido.\"
+      },
+      {
+        \"role\": \"user\",
+        \"content\": [
+          { \"type\": \"text\", \"text\": \"Extrae: proveedor, monto_total, fecha, numero_factura\" },
+          { \"type\": \"image_url\", \"image_url\": { \"url\": \"data:image/jpeg;base64,${BASE64_IMG}\" } }
+        ]
+      }
+    ]
+  }"
+```
+
+**Respuesta esperada:**
+
+```json
+{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "content": "{\"proveedor\":\"Suministros ABC\",\"monto_total\":\"$1,250.00\",\"fecha\":\"2026-03-15\",\"numero_factura\":\"FAC-00847\"}"
+    }
+  }]
+}
+```
+
+---
+
+### 8. Con token de autenticación (si configuraste API_SECRET)
 
 ```bash
 curl -X POST http://localhost:3000/v1/chat/completions \
@@ -691,4 +862,5 @@ Authorization: Bearer <tu_token_configurado_en_env>
 - **Stateless por diseño:** Cada petición crea y elimina su propia sesión de OpenCode. No hay memoria entre peticiones. Si necesitas conversaciones multi-turno, incluye todo el historial en el array `messages`.
 - **Sin streaming:** Las respuestas se reciben de forma completa. Para textos muy largos, la petición puede tardar hasta 2 minutos (timeout configurado).
 - **Tokens estimados:** El campo `usage` en la respuesta es una estimación (1 token ≈ 4 caracteres). No refleja el conteo real de tokens de OpenAI.
-- **Límite de body:** El servidor acepta hasta 10 MB por petición. Para textos muy largos, considera dividirlos en chunks.
+- **Límite de body:** El servidor acepta hasta 10 MB por petición. Para textos muy largos, considera dividirlos en chunks. Para imágenes, ten en cuenta que base64 agrega ~33% al tamaño original (una imagen de 6 MB ocupa ~8 MB en base64).
+- **Soporte de imágenes:** El endpoint acepta imágenes base64 en el formato estándar de OpenAI (`content` como array con partes `text` e `image_url`). Solo se aceptan data URLs base64, no URLs remotas. Formatos: PNG, JPEG, GIF, WebP.

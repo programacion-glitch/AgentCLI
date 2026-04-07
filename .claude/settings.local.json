@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:opencode.ai)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:developers.openai.com)",
+      "Bash(gh api:*)",
+      "Bash(grep -E \"\\\\.\\(ts|go\\)$\")",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s http://127.0.0.1:4096/global/health)",
+      "Bash(curl -s http://localhost:3000/health)",
+      "Bash(node test-image.js)",
+      "Bash(ls:*)",
+      "Bash(curl:*)",
+      "Bash(node -e \":*)",
+      "Bash(tasklist)",
+      "Bash(netstat -ano)",
+      "Bash(sc query:*)",
+      "Bash(wmic process:*)",
+      "Bash(taskkill //F //PID 11048 //T)",
+      "Bash(taskkill //F //PID 11496)",
+      "Bash(npm start:*)",
+      "Bash(taskkill //F //PID 33256 //T)",
+      "Bash(rm:*)"
+    ]
+  }
+}

@@ -62,28 +62,18 @@ class OpenCodeClient {
      * Envía un mensaje a una sesión y espera la respuesta completa.
      * @param model - Formato "providerID/modelID", ej: "openai/gpt-5.4"
      */
-    async sendMessage(sessionId, prompt, model, systemPrompt) {
-        // Parseamos el modelo que viene en formato "providerID/modelID"
+    async sendMessage(sessionId, parts, model, systemPrompt) {
         const [providerID, modelID] = model.includes("/")
             ? model.split("/", 2)
             : ["openai", model];
         const body = {
-            parts: [
-                {
-                    type: "text",
-                    text: prompt,
-                },
-            ],
-            // OpenCode espera el modelo como objeto con providerID y modelID
+            parts,
             model: {
                 providerID,
                 modelID,
             },
+            ...(systemPrompt && { system: systemPrompt }),
         };
-        // Si hay un system prompt, lo pasamos directamente
-        if (systemPrompt) {
-            body.system = systemPrompt;
-        }
         const res = await this.http.post(`/session/${sessionId}/message`, body);
         return res.data;
     }
@@ -126,15 +116,14 @@ class OpenCodeClient {
     /**
      * Operación completa: crea sesión → envía mensaje → devuelve texto → limpia sesión
      */
-    async chat(prompt, model, systemPrompt) {
+    async chat(parts, model, systemPrompt) {
         const session = await this.createSession();
         try {
-            const response = await this.sendMessage(session.id, prompt, model, systemPrompt);
+            const response = await this.sendMessage(session.id, parts, model, systemPrompt);
             const text = this.extractTextFromResponse(response);
             return { text, model };
         }
         finally {
-            // Siempre limpiamos la sesión, aunque haya error
             await this.deleteSession(session.id);
         }
     }

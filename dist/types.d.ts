@@ -1,6 +1,16 @@
+export type ContentPart = {
+    type: "text";
+    text: string;
+} | {
+    type: "image_url";
+    image_url: {
+        url: string;
+        detail?: string;
+    };
+};
 export interface OpenAIMessage {
     role: "system" | "user" | "assistant";
-    content: string;
+    content: string | ContentPart[];
 }
 export interface ChatCompletionRequest {
     model?: string;
@@ -55,4 +65,12 @@ export interface OpenCodeMessageResponse {
     };
     parts: OpenCodeMessagePart[];
 }
+export type OpenCodeInputPart = {
+    type: "text";
+    text: string;
+} | {
+    type: "file";
+    mime: string;
+    url: string;
+};
 //# sourceMappingURL=types.d.ts.map

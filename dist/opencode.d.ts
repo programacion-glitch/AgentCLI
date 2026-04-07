@@ -1,4 +1,4 @@
-import { OpenCodeSession, OpenCodeMessageResponse } from "./types";
+import { OpenCodeSession, OpenCodeMessageResponse, OpenCodeInputPart } from "./types";
 export declare class OpenCodeClient {
     private http;
     private baseURL;
@@ -24,7 +24,7 @@ export declare class OpenCodeClient {
      * Envía un mensaje a una sesión y espera la respuesta completa.
      * @param model - Formato "providerID/modelID", ej: "openai/gpt-5.4"
      */
-    sendMessage(sessionId: string, prompt: string, model: string, systemPrompt?: string): Promise<OpenCodeMessageResponse>;
+    sendMessage(sessionId: string, parts: OpenCodeInputPart[], model: string, systemPrompt?: string): Promise<OpenCodeMessageResponse>;
     /**
      * Obtiene el modelo default configurado en OpenCode (el primero de los conectados)
      */
@@ -36,7 +36,7 @@ export declare class OpenCodeClient {
     /**
      * Operación completa: crea sesión → envía mensaje → devuelve texto → limpia sesión
      */
-    chat(prompt: string, model: string, systemPrompt?: string): Promise<{
+    chat(parts: OpenCodeInputPart[], model: string, systemPrompt?: string): Promise<{
         text: string;
         model: string;
     }>;
