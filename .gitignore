@@ -5,7 +5,7 @@ node_modules/
 dist/
 
 # Variables de entorno (contienen credenciales)
-.env
+# .env
 
 # Logs
 *.log
