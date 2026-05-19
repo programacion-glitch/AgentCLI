@@ -198,6 +198,34 @@ El proxy está listo para recibir peticiones.
 
 ---
 
+## Pruebas rápidas con `curl`
+
+Health check:
+
+```bash
+curl http://localhost:3000/health
+```
+
+Listar modelos:
+
+```bash
+curl http://localhost:3000/v1/models
+```
+
+Chat completion en **una sola línea** (funciona en `cmd.exe` de Windows):
+
+```bash
+curl -X POST http://localhost:3000/v1/chat/completions -H "Content-Type: application/json" -d "{\"model\":\"gpt-4o\",\"messages\":[{\"role\":\"user\",\"content\":\"Hola\"}]}"
+```
+
+Equivalente en bash / Linux / macOS / Git Bash:
+
+```bash
+curl -X POST http://localhost:3000/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hola"}]}'
+```
+
+---
+
 ## Estructura del proyecto
 
 ```

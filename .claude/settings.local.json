@@ -25,7 +25,9 @@
       "Bash(taskkill //F //PID 11496)",
       "Bash(npm start:*)",
       "Bash(taskkill //F //PID 33256 //T)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Read(//c/Users/DESARR~1/AppData/Local/Temp/claude/C--Users-Desarrollo-Documents-AgentAI/3fef24e2-7632-474e-93a4-29c82b17ce97/tasks/**)",
+      "Read(//c/Users/DESARR~1/AppData/Local/Temp/claude/C--Users-Desarrollo-Documents-AgentAI/5ac021d1-3d81-4fc8-a99c-a44f97460af6/tasks/**)"
     ]
   }
 }
